@@ -16,32 +16,29 @@ import (
 	"encoding/binary"
 )
 
-// KCP BASIC
-const IKCP_RTO_NDL uint32 = 30  // no delay min rto
-const IKCP_RTO_MIN uint32 = 100 // normal min rto
-const IKCP_RTO_DEF uint32 = 200
-const IKCP_RTO_MAX uint32 = 60000
-const IKCP_CMD_PUSH uint32 = 81 // cmd: push data
-const IKCP_CMD_ACK uint32 = 82  // cmd: ack
-const IKCP_CMD_WASK uint32 = 83 // cmd: window probe (ask)
-const IKCP_CMD_WINS uint32 = 84 // cmd: window size (tell)
-const IKCP_ASK_SEND uint32 = 1  // need to send IKCP_CMD_WASK
-const IKCP_ASK_TELL uint32 = 2  // need to send IKCP_CMD_WINS
-const IKCP_WND_SND uint32 = 32
-const IKCP_WND_RCV uint32 = 32
-const IKCP_MTU_DEF uint32 = 1400
-const IKCP_ACK_FAST uint32 = 3
-const IKCP_INTERVAL uint32 = 100
-const IKCP_OVERHEAD uint32 = 24
-const IKCP_DEADLINK uint32 = 10
-const IKCP_THRESH_INIT uint32 = 2
-const IKCP_THRESH_MIN uint32 = 2
-const IKCP_PROBE_INIT uint32 = 7000    // 7 secs to probe window size
-const IKCP_PROBE_LIMIT uint32 = 120000 // up to 120 secs to probe window
-
-//---------------------------------------------------------------------
-// encode / decode
-//---------------------------------------------------------------------
+const (
+	IKCP_RTO_NDL     uint32 = 30  // no delay min rto
+	IKCP_RTO_MIN     uint32 = 100 // normal min rto
+	IKCP_RTO_DEF     uint32 = 200
+	IKCP_RTO_MAX     uint32 = 60000
+	IKCP_CMD_PUSH    uint32 = 81 // cmd: push data
+	IKCP_CMD_ACK     uint32 = 82 // cmd: ack
+	IKCP_CMD_WASK    uint32 = 83 // cmd: window probe (ask)
+	IKCP_CMD_WINS    uint32 = 84 // cmd: window size (tell)
+	IKCP_ASK_SEND    uint32 = 1  // need to send IKCP_CMD_WASK
+	IKCP_ASK_TELL    uint32 = 2  // need to send IKCP_CMD_WINS
+	IKCP_WND_SND     uint32 = 32
+	IKCP_WND_RCV     uint32 = 32
+	IKCP_MTU_DEF     uint32 = 1400
+	IKCP_ACK_FAST    uint32 = 3
+	IKCP_INTERVAL    uint32 = 100
+	IKCP_OVERHEAD    uint32 = 24
+	IKCP_DEADLINK    uint32 = 10
+	IKCP_THRESH_INIT uint32 = 2
+	IKCP_THRESH_MIN  uint32 = 2
+	IKCP_PROBE_INIT  uint32 = 7000   // 7 secs to probe window size
+	IKCP_PROBE_LIMIT uint32 = 120000 // up to 120 secs to probe window
+)
 
 // encode 8 bits unsigned int
 func encode8u(p []byte, c byte) []byte {
@@ -103,9 +100,7 @@ func _itimediff(later, earlier uint32) int32 {
 	return ((int32)(later - earlier))
 }
 
-//---------------------------------------------------------------------
 // manage segment
-//---------------------------------------------------------------------
 type IKCPSEG struct {
 	conv     uint32
 	cmd      uint32
@@ -149,40 +144,6 @@ void allocator(void* (*new_malloc)(size_t), void (*new_free)(void*))
 }
 */
 
-// allocate a new kcp segment
-func segmentNew(kcp *Ikcpcb, size int32) *IKCPSEG {
-	newInfo := &IKCPSEG{}
-	newInfo.data = make([]byte, size)
-	return newInfo
-}
-
-// delete a segment
-
-// write log
-func log(kcp *Ikcpcb, mask int32, head string, args ...interface{}) {
-	//if ((mask & kcp.logmask) == 0 || kcp.writelog == 0) { return }
-	//fmt.Printf(head, args...)
-}
-
-// check log mask
-func canlog(kcp *Ikcpcb, mask int32) int32 {
-	if (mask&kcp.logmask) == 0 || kcp.writelog == nil {
-		return 0
-	}
-	return 1
-}
-
-// output segment
-func output(kcp *Ikcpcb, data []byte, size int32) int32 {
-	if canlog(kcp, IKCP_LOG_OUTPUT) != 0 {
-		log(kcp, IKCP_LOG_OUTPUT, "[RO] %ld bytes", int32(size))
-	}
-	if size == 0 {
-		return 0
-	}
-	return kcp.Output(data, size, kcp, kcp.user)
-}
-
 // create a new kcpcb
 func Create(conv uint32, user interface{}) *Ikcpcb {
 	kcp := &Ikcpcb{
@@ -210,21 +171,60 @@ func Create(conv uint32, user interface{}) *Ikcpcb {
 	return kcp
 }
 
-// release a new kcpcb
-func Release(kcp *Ikcpcb) {
-	if kcp != nil {
-		kcp.nrcvBuf = 0
-		kcp.nsndBuf = 0
-		kcp.nrcvQue = 0
-		kcp.nsndQue = 0
-		kcp.ackcount = 0
-		kcp.buffer = nil
-		kcp.acklist = nil
+type Ikcpcb struct {
+	conv, mtu, mss, state               uint32
+	sndUna, sndNxt, rcvNxt              uint32
+	tsRecent, tsLastack, ssthresh       uint32
+	rxRttval, rxSrtt, rxRto, rxMinrto   uint32
+	sndWnd, rcvWnd, rmtWnd, cwnd, probe uint32
+	current, interval, ts_flush, xmit   uint32
+	nrcvBuf, nsndBuf                    uint32
+	nrcvQue, nsndQue                    uint32
+	nodelay, updated                    uint32
+	tsProbe, probeWait                  uint32
+	deadLink, incr                      uint32
+	sndQueue, rcvQueue, sndBuf, rcvBuf  *list.List
+	acklist                             []uint32
+	ackcount                            uint32
+	ackblock                            uint32
+	user                                interface{}
+	buffer                              []byte
+	fastresend                          int32
+	nocwnd                              int32
+	logmask                             int32
+	writelog                            func(log []byte, kcp *Ikcpcb, user []byte)
+
+	Output func(buf []byte, _len int32, kcp *Ikcpcb, user interface{}) int32
+}
+
+// allocate a new kcp segment
+func (kcp *Ikcpcb) segmentNew(size int32) *IKCPSEG {
+	newInfo := &IKCPSEG{}
+	newInfo.data = make([]byte, size)
+	return newInfo
+}
+
+// output segment
+func (kcp *Ikcpcb) output(data []byte, size int32) int32 {
+	if size == 0 {
+		return 0
 	}
+	return kcp.Output(data, size, kcp, kcp.user)
+}
+
+// release a new kcpcb
+func (kcp *Ikcpcb) Release() {
+	kcp.nrcvBuf = 0
+	kcp.nsndBuf = 0
+	kcp.nrcvQue = 0
+	kcp.nsndQue = 0
+	kcp.ackcount = 0
+	kcp.buffer = nil
+	kcp.acklist = nil
 }
 
 // recv data
-func Recv(kcp *Ikcpcb, buffer []byte, _len int32) int32 {
+func (kcp *Ikcpcb) Recv(buffer []byte, _len int32) int32 {
 	ispeek := 1
 	if _len >= 0 {
 		ispeek = 0
@@ -241,7 +241,7 @@ func Recv(kcp *Ikcpcb, buffer []byte, _len int32) int32 {
 		_len = -_len
 	}
 
-	peeksize = Peeksize(kcp)
+	peeksize = kcp.Peeksize()
 
 	if peeksize < 0 {
 		return -2
@@ -272,9 +272,9 @@ func Recv(kcp *Ikcpcb, buffer []byte, _len int32) int32 {
 		_len += int32(seg._len)
 		fragment = int32(seg.frg)
 
-		if canlog(kcp, IKCP_LOG_RECV) != 0 {
-			log(kcp, IKCP_LOG_RECV, "recv sn=", seg.sn, seg._len, kcp.user)
-		}
+		//if canlog(kcp, IKCP_LOG_RECV) != 0 {
+		//	log(kcp, IKCP_LOG_RECV, "recv sn=", seg.sn, seg._len, kcp.user)
+		//}
 
 		if ispeek == 0 {
 			q := p.Next()
@@ -322,7 +322,7 @@ func Recv(kcp *Ikcpcb, buffer []byte, _len int32) int32 {
 }
 
 // send data
-func Peeksize(kcp *Ikcpcb) int32 {
+func (kcp *Ikcpcb) Peeksize() int32 {
 	length := 0
 
 	if kcp.rcvQueue.Len() == 0 {
@@ -350,7 +350,7 @@ func Peeksize(kcp *Ikcpcb) int32 {
 }
 
 // send data
-func Send(kcp *Ikcpcb, buffer []byte, _len int) int {
+func (kcp *Ikcpcb) Send(buffer []byte, _len int) int {
 	var seg *IKCPSEG
 	var count, i int32
 
@@ -378,7 +378,7 @@ func Send(kcp *Ikcpcb, buffer []byte, _len int) int {
 		if _len <= int(kcp.mss) {
 			size = int32(_len)
 		}
-		seg = segmentNew(kcp, size)
+		seg = kcp.segmentNew(size)
 		if seg == nil {
 			return -2
 		}
@@ -402,7 +402,7 @@ func Send(kcp *Ikcpcb, buffer []byte, _len int) int {
 }
 
 // parse ack
-func UpdateAck(kcp *Ikcpcb, rtt int32) {
+func (kcp *Ikcpcb) UpdateAck(rtt int32) {
 	rto := 0
 	if kcp.rxSrtt == 0 {
 		kcp.rxSrtt = uint32(rtt)
@@ -422,7 +422,7 @@ func UpdateAck(kcp *Ikcpcb, rtt int32) {
 	kcp.rxRto = _ibound_(kcp.rxMinrto, uint32(rto), IKCP_RTO_MAX)
 }
 
-func shrinkBuf(kcp *Ikcpcb) {
+func (kcp *Ikcpcb) shrinkBuf() {
 	if kcp.sndBuf.Len() > 0 {
 		p := kcp.sndBuf.Front()
 		seg := p.Value.(*IKCPSEG)
@@ -438,7 +438,7 @@ func shrinkBuf(kcp *Ikcpcb) {
 	}
 }
 
-func parseAck(kcp *Ikcpcb, sn uint32) {
+func (kcp *Ikcpcb) parseAck(sn uint32) {
 	if _itimediff(sn, kcp.sndUna) < 0 || _itimediff(sn, kcp.sndNxt) >= 0 {
 		//fmt.Printf("wi %d,%d  %d,%d\n", sn, kcp.snd_una, sn, kcp.snd_nxt)
 		return
@@ -457,7 +457,7 @@ func parseAck(kcp *Ikcpcb, sn uint32) {
 	}
 }
 
-func parseUna(kcp *Ikcpcb, una uint32) {
+func (kcp *Ikcpcb) parseUna(una uint32) {
 	for p := kcp.sndBuf.Front(); p != nil; {
 		seg := p.Value.(*IKCPSEG)
 		if _itimediff(una, seg.sn) > 0 {
@@ -472,7 +472,7 @@ func parseUna(kcp *Ikcpcb, una uint32) {
 }
 
 // ack append
-func ackPush(kcp *Ikcpcb, sn, ts uint32) {
+func (kcp *Ikcpcb) ackPush(sn, ts uint32) {
 	newsize := kcp.ackcount + 1
 
 	if newsize > kcp.ackblock {
@@ -498,7 +498,7 @@ func ackPush(kcp *Ikcpcb, sn, ts uint32) {
 	kcp.ackcount++
 }
 
-func ackGet(kcp *Ikcpcb, p int32, sn, ts *uint32) {
+func (kcp *Ikcpcb) ackGet(p int32, sn, ts *uint32) {
 	if sn != nil {
 		*sn = kcp.acklist[p*2+0]
 	}
@@ -508,7 +508,7 @@ func ackGet(kcp *Ikcpcb, p int32, sn, ts *uint32) {
 }
 
 // parse data
-func parseData(kcp *Ikcpcb, newseg *IKCPSEG) {
+func (kcp *Ikcpcb) parseData(newseg *IKCPSEG) {
 	var p *list.Element
 	sn := newseg.sn
 	repeat := 0
@@ -558,11 +558,11 @@ func parseData(kcp *Ikcpcb, newseg *IKCPSEG) {
 }
 
 // input data
-func Input(kcp *Ikcpcb, data []byte, size int) int {
+func (kcp *Ikcpcb) Input(data []byte, size int) int {
 	una := kcp.sndUna
-	if canlog(kcp, IKCP_LOG_INPUT) != 0 {
-		log(kcp, IKCP_LOG_INPUT, "[RI] %d bytes", size)
-	}
+	//if canlog(kcp, IKCP_LOG_INPUT) != 0 {
+	//	log(kcp, IKCP_LOG_INPUT, "[RI] %d bytes", size)
+	//}
 
 	if data == nil || size < 24 {
 		return 0
@@ -603,30 +603,30 @@ func Input(kcp *Ikcpcb, data []byte, size int) int {
 		}
 
 		kcp.rmtWnd = uint32(wnd)
-		parseUna(kcp, una)
-		shrinkBuf(kcp)
+		kcp.parseUna(una)
+		kcp.shrinkBuf()
 
 		if cmd == uint8(IKCP_CMD_ACK) {
 			if _itimediff(kcp.current, ts) >= 0 {
-				UpdateAck(kcp, _itimediff(kcp.current, ts))
+				kcp.UpdateAck(_itimediff(kcp.current, ts))
 			}
-			parseAck(kcp, sn)
-			shrinkBuf(kcp)
-			if canlog(kcp, IKCP_LOG_IN_ACK) != 0 {
-				log(kcp, IKCP_LOG_IN_DATA,
-					"input ack: sn=%lu rtt=%ld rto=%ld", sn,
-					uint32(_itimediff(kcp.current, ts)),
-					uint32(kcp.rxRto))
-			}
+			kcp.parseAck(sn)
+			kcp.shrinkBuf()
+			//if canlog(kcp, IKCP_LOG_IN_ACK) != 0 {
+			//	log(kcp, IKCP_LOG_IN_DATA,
+			//		"input ack: sn=%lu rtt=%ld rto=%ld", sn,
+			//		uint32(_itimediff(kcp.current, ts)),
+			//		uint32(kcp.rxRto))
+			//}
 		} else if cmd == uint8(IKCP_CMD_PUSH) {
-			if canlog(kcp, IKCP_LOG_IN_DATA) != 0 {
-				log(kcp, IKCP_LOG_IN_DATA,
-					"input psh: sn=%lu ts=%lu", sn, ts)
-			}
+			//if canlog(kcp, IKCP_LOG_IN_DATA) != 0 {
+			//	log(kcp, IKCP_LOG_IN_DATA,
+			//		"input psh: sn=%lu ts=%lu", sn, ts)
+			//}
 			if _itimediff(sn, kcp.rcvNxt+kcp.rcvWnd) < 0 {
-				ackPush(kcp, sn, ts)
+				kcp.ackPush(sn, ts)
 				if _itimediff(sn, kcp.rcvNxt) >= 0 {
-					seg = segmentNew(kcp, int32(_len))
+					seg = kcp.segmentNew(int32(_len))
 					seg.conv = conv
 					seg.cmd = uint32(cmd)
 					seg.frg = uint32(frg)
@@ -640,22 +640,22 @@ func Input(kcp *Ikcpcb, data []byte, size int) int {
 						copy(seg.data, data[:_len])
 					}
 
-					parseData(kcp, seg)
+					kcp.parseData(seg)
 				}
 			}
 		} else if cmd == uint8(IKCP_CMD_WASK) {
 			// ready to send back IKCP_CMD_WINS in Ikcp_flush
 			// tell remote my window size
 			kcp.probe |= IKCP_ASK_TELL
-			if canlog(kcp, IKCP_LOG_IN_PROBE) != 0 {
-				log(kcp, IKCP_LOG_IN_PROBE, "input probe")
-			}
+			//if canlog(kcp, IKCP_LOG_IN_PROBE) != 0 {
+			//	log(kcp, IKCP_LOG_IN_PROBE, "input probe")
+			//}
 		} else if cmd == uint8(IKCP_CMD_WINS) {
 			// do nothing
-			if canlog(kcp, IKCP_LOG_IN_WIN) != 0 {
-				log(kcp, IKCP_LOG_IN_WIN,
-					"input wins: %lu", uint32(wnd))
-			}
+			//if canlog(kcp, IKCP_LOG_IN_WIN) != 0 {
+			//	log(kcp, IKCP_LOG_IN_WIN,
+			//		"input wins: %lu", uint32(wnd))
+			//}
 		} else {
 			return -3
 		}
@@ -702,7 +702,7 @@ func encodeSeg(ptr []byte, seg *IKCPSEG) []byte {
 	return ptr
 }
 
-func wndUnused(kcp *Ikcpcb) int32 {
+func (kcp *Ikcpcb) wndUnused() int32 {
 	if kcp.nrcvQue < kcp.rcvWnd {
 		return int32(kcp.rcvWnd - kcp.nrcvQue)
 	}
@@ -710,7 +710,7 @@ func wndUnused(kcp *Ikcpcb) int32 {
 }
 
 // Ikcp_flush
-func Flush(kcp *Ikcpcb) {
+func (kcp *Ikcpcb) Flush() {
 	current := kcp.current
 	buffer := kcp.buffer
 	ptr := buffer
@@ -729,7 +729,7 @@ func Flush(kcp *Ikcpcb) {
 	seg.conv = kcp.conv
 	seg.cmd = IKCP_CMD_ACK
 	seg.frg = 0
-	seg.wnd = uint32(wndUnused(kcp))
+	seg.wnd = uint32(kcp.wndUnused())
 	seg.una = kcp.rcvNxt
 	seg._len = 0
 	seg.sn = 0
@@ -741,11 +741,11 @@ func Flush(kcp *Ikcpcb) {
 	for i = 0; i < count; i++ {
 		//size = int32(ptr - buffer)
 		if size > int32(kcp.mtu) {
-			output(kcp, buffer, size)
+			kcp.output(buffer, size)
 			ptr = buffer
 			size = 0
 		}
-		ackGet(kcp, i, &seg.sn, &seg.ts)
+		kcp.ackGet(i, &seg.sn, &seg.ts)
 		ptr = encodeSeg(ptr, &seg)
 		size += 24
 	}
@@ -779,7 +779,7 @@ func Flush(kcp *Ikcpcb) {
 	if (kcp.probe & IKCP_ASK_SEND) != 0 {
 		seg.cmd = IKCP_CMD_WASK
 		if size > int32(kcp.mtu) {
-			output(kcp, buffer, size)
+			kcp.output(buffer, size)
 			ptr = buffer
 			size = 0
 		}
@@ -791,7 +791,7 @@ func Flush(kcp *Ikcpcb) {
 	if (kcp.probe & IKCP_ASK_TELL) != 0 {
 		seg.cmd = IKCP_CMD_WINS
 		if size > int32(kcp.mtu) {
-			output(kcp, buffer, size)
+			kcp.output(buffer, size)
 			ptr = buffer
 			size = 0
 		}
@@ -895,7 +895,7 @@ func Flush(kcp *Ikcpcb) {
 			////fmt.Printf("vzex:need send%d, %d,%d,%d\n", kcp.nsnd_buf, size, need, kcp.mtu)
 			if size+need >= int32(kcp.mtu) {
 				//      //fmt.Printf("trigger!\n");
-				output(kcp, buffer, size)
+				kcp.output(buffer, size)
 				ptr = buffer
 				size = 0
 			}
@@ -917,7 +917,7 @@ func Flush(kcp *Ikcpcb) {
 
 	// flash remain segments
 	if size > 0 {
-		output(kcp, buffer, size)
+		kcp.output(buffer, size)
 	}
 
 	// update ssthresh
@@ -947,7 +947,7 @@ func Flush(kcp *Ikcpcb) {
 }
 
 // input update
-func Update(kcp *Ikcpcb, current uint32) {
+func (kcp *Ikcpcb) Update(current uint32) {
 	var slap int32
 
 	kcp.current = current
@@ -969,11 +969,11 @@ func Update(kcp *Ikcpcb, current uint32) {
 		if _itimediff(kcp.current, kcp.ts_flush) >= 0 {
 			kcp.ts_flush = kcp.current + kcp.interval
 		}
-		Flush(kcp)
+		kcp.Flush()
 	}
 }
 
-func Check(kcp *Ikcpcb, current uint32) uint32 {
+func (kcp *Ikcpcb) Check(current uint32) uint32 {
 	ts_flush := kcp.ts_flush
 	tm_flush := 0x7fffffff
 	tm_packet := 0x7fffffff
@@ -1015,7 +1015,7 @@ func Check(kcp *Ikcpcb, current uint32) uint32 {
 	return current + uint32(minimal)
 }
 
-func Setmtu(kcp *Ikcpcb, mtu int32) int32 {
+func (kcp *Ikcpcb) Setmtu(mtu int32) int32 {
 	if mtu < 50 || mtu < int32(IKCP_OVERHEAD) {
 		return -1
 	}
@@ -1029,7 +1029,7 @@ func Setmtu(kcp *Ikcpcb, mtu int32) int32 {
 	return 0
 }
 
-func Interval(kcp *Ikcpcb, interval int32) int32 {
+func (kcp *Ikcpcb) Interval(interval int32) int32 {
 	if interval > 5000 {
 		interval = 5000
 	} else if interval < 10 {
@@ -1039,7 +1039,7 @@ func Interval(kcp *Ikcpcb, interval int32) int32 {
 	return 0
 }
 
-func Nodelay(kcp *Ikcpcb, nodelay, interval, resend, nc int32) int32 {
+func (kcp *Ikcpcb) Nodelay(nodelay, interval, resend, nc int32) int32 {
 	if nodelay >= 0 {
 		kcp.nodelay = uint32(nodelay)
 		if nodelay != 0 {
@@ -1065,7 +1065,7 @@ func Nodelay(kcp *Ikcpcb, nodelay, interval, resend, nc int32) int32 {
 	return 0
 }
 
-func Wndsize(kcp *Ikcpcb, sndwnd, rcvwnd int32) int32 {
+func (kcp *Ikcpcb) Wndsize(sndwnd, rcvwnd int32) int32 {
 	if kcp != nil {
 		if sndwnd > 0 {
 			kcp.sndWnd = uint32(sndwnd)
@@ -1077,6 +1077,6 @@ func Wndsize(kcp *Ikcpcb, sndwnd, rcvwnd int32) int32 {
 	return 0
 }
 
-func Waitsnd(kcp *Ikcpcb) int32 {
+func (kcp *Ikcpcb) Waitsnd() int32 {
 	return int32(kcp.nsndBuf + kcp.nsndQue)
 }
